@@ -1,4 +1,4 @@
-"""产品资料库 + 客服行为规范 → Milvus rag_collection"""
+"""产品资料库 + 客服行为规范 -> Milvus rag_collection"""
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 for p in [os.path.join(os.path.dirname(os.path.dirname(__file__)), "crm_agent", "crm_agent"),

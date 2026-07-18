@@ -940,7 +940,7 @@ class FeigeMonitorAgent:
                     "session_key": contact_name,
                     "tool_loop": self.tool_loop,
                 },
-                timeout=(5, 15),
+                timeout=(10, 120),
             )
             logger.debug(f"[API_CHAT] done status={resp.status_code}")
             if resp.ok:
@@ -1509,29 +1509,28 @@ class FeigeMonitorAgent:
                                     reply = self.fixed_reply
                                 else:
                                     logger.debug(f"[REPLY] calling _api_chat for {name}")
+                                    _sent_placeholder = False
                                     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
                                         future = executor.submit(self._api_chat, name, msg_content)
                                         try:
-                                            # 先等 15s
-                                            _api_result = future.result(timeout=15)
+                                            _api_result = future.result(timeout=20)
                                             reply = _api_result.get("answer", "")
                                             _needs_handoff = _api_result.get("needs_handoff", False)
                                         except concurrent.futures.TimeoutError:
-                                            # 15s 未返回 → 先发兜底
-                                            logger.warning(f"[REPLY] _api_chat 慢 (15s)，先发兜底: {name}")
+                                            logger.warning(f"[REPLY] _api_chat 慢 (20s)，先发兜底: {name}")
                                             fallback_reply = self._sanitize_reply("嗯嗯，我在呢~，我帮你确认下哈")
                                             self.send_message(fallback_reply)
                                             logger.info(f"兜底 [{name}]: {fallback_reply}")
-                                            # 继续等真实回复（最多再 60s）
+                                            _sent_placeholder = True
                                             try:
                                                 _api_result = future.result(timeout=60)
                                             except concurrent.futures.TimeoutError:
-                                                logger.warning(f"[REPLY] _api_chat 完全超时 (75s): {name}")
+                                                logger.warning(f"[REPLY] _api_chat 完全超时 (80s): {name}")
                                                 _api_result = {"answer": "", "needs_handoff": False, "route": ""}
                                             reply = _api_result.get("answer", "")
                                             _needs_handoff = _api_result.get("needs_handoff", False)
                                     logger.debug(f"[REPLY] _api_chat returned for {name}: {reply[:60] if reply else 'empty'} handoff={_needs_handoff}")
-                            if not reply:
+                            if not reply and not _sent_placeholder:
                                 logger.warning(f"[REPLY] _api_chat 返回空，使用 fallback: {name}")
                                 reply = "嗯嗯，我在呢~"
                             reply = self._sanitize_reply(reply)
