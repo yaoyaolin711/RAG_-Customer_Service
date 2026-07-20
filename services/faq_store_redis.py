@@ -141,6 +141,47 @@ class RedisFaqStore:
         else:
             self._client.set(key, answer)
 
+    def insert_faq(self, row: dict[str, Any]) -> bool:
+        """增量添加一条 FAQ 到 Redis 索引（MySQL 已写入后调用）。"""
+        faq_id = int(row.get("id", 0))
+        if not faq_id:
+            return False
+        question_text = str(row.get("question_text") or "")
+        search_text = str(row.get("search_text") or question_text)
+        variants = row.get("question_variants") or []
+        if isinstance(variants, str):
+            try:
+                variants = json.loads(variants)
+            except json.JSONDecodeError:
+                variants = [variants]
+        variants = [str(v).strip() for v in variants if str(v).strip()]
+
+        item = {
+            "id": faq_id,
+            "main_class": str(row.get("main_class") or ""),
+            "qa_type": str(row.get("qa_type") or ""),
+            "sub_class": str(row.get("sub_class") or ""),
+            "question_text": question_text,
+            "search_text": search_text,
+            "question_variants": variants,
+            "source": str(row.get("source") or ""),
+        }
+        pipe = self._client.pipeline()
+        pipe.set(KEY_ITEM.format(id=faq_id), json.dumps(item, ensure_ascii=False))
+        for norm in _question_norms(question_text, search_text, item, variants):
+            if norm:
+                pipe.set(KEY_NORM.format(norm=norm), str(faq_id))
+        answer = str(row.get("answer") or "")
+        if answer:
+            pipe.set(KEY_ANSWER.format(id=faq_id), answer)
+        # 更新全量索引列表
+        index = self.get_index()
+        if not any(x.get("id") == faq_id for x in index):
+            index.append(item)
+        pipe.set(KEY_INDEX, json.dumps(index, ensure_ascii=False))
+        pipe.execute()
+        return True
+
     def cache_user_hit(
         self,
         norm_question: str,

@@ -159,6 +159,38 @@ FROM faq_qa_pairs WHERE id=%s
                     (now, faq_id),
                 )
 
+    def insert_one(self, row: dict[str, Any]) -> int:
+        """新增一条 FAQ 记录（不含查重，由调用方保证）。返回自增 id。"""
+        now = datetime.now().isoformat(timespec="seconds")
+        variants = row.get("question_variants") or []
+        if not isinstance(variants, list):
+            variants = _parse_variants(variants)
+        payload = {
+            "main_class": row["main_class"],
+            "qa_type": row["qa_type"],
+            "sub_class": row["sub_class"],
+            "question_text": row["question_text"],
+            "question_variants": json.dumps(variants, ensure_ascii=False),
+            "search_text": row.get("search_text") or row["question_text"],
+            "answer": row["answer"],
+            "source": row.get("source", "auto_mined"),
+            "created_at": now,
+            "updated_at": now,
+        }
+        sql = """
+INSERT INTO faq_qa_pairs (
+  main_class, qa_type, sub_class, question_text, question_variants,
+  search_text, answer, source, hit_count, created_at, updated_at
+) VALUES (
+  %(main_class)s, %(qa_type)s, %(sub_class)s, %(question_text)s, CAST(%(question_variants)s AS JSON),
+  %(search_text)s, %(answer)s, %(source)s, 0, %(created_at)s, %(updated_at)s
+)
+"""
+        with _connect(database=MYSQL_FAQ_DATABASE) as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, payload)
+                return int(cur.lastrowid)
+
 
 _store: MySQLFaqStore | None = None
 

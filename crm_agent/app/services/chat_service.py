@@ -312,6 +312,19 @@ def handle_chat(
 
     session_meta = _persist_session_turn(user_id=user_id, message=text, output=output)
 
+    # 非阻塞记录 FAQ 挖掘样本
+    try:
+        from services.faq_mining_tracker import log_turn
+        log_turn(
+            user_message=text,
+            assistant_answer=answer,
+            answer_confidence=float(output.get("answer_confidence") or 0),
+            route=output.get("route", ""),
+            reply_mode=output.get("reply_mode", ""),
+        )
+    except Exception:
+        logger.debug("FAQ 挖掘记录异常（不影响本次回复）")
+
     return _serialize_agent_result(
         result,
         user_id=user_id,
